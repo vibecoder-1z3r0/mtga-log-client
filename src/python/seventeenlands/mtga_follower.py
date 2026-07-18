@@ -245,14 +245,12 @@ class Follower:
         self,
         token: str,
         host: str,
-        api_client_cls: type[
-            seventeenlands.api_client.ApiClient
-        ] = seventeenlands.api_client.ApiClient,
+        api_client: Optional[seventeenlands.api_client.ApiClient] = None,
     ) -> None:
         self.host = host
         self.token = token
         self.json_decoder = json.JSONDecoder()
-        self._api_client = api_client_cls(host=host)
+        self._api_client = api_client or seventeenlands.api_client.ApiClient(host=host)
         self._reinitialize()
 
     def _reinitialize(self) -> None:
@@ -1680,9 +1678,7 @@ def verify_version(host: str, prompt_if_update_required: bool) -> bool:
 def processing_loop(
     args: argparse.Namespace,
     token: str,
-    api_client_cls: type[
-        seventeenlands.api_client.ApiClient
-    ] = seventeenlands.api_client.ApiClient,
+    api_client: Optional[seventeenlands.api_client.ApiClient] = None,
 ) -> None:
     filepaths = POSSIBLE_CURRENT_FILEPATHS
     if args.local_log_files is not None:
@@ -1690,7 +1686,7 @@ def processing_loop(
 
     follow = not args.once
 
-    follower = Follower(token, host=args.host, api_client_cls=api_client_cls)
+    follower = Follower(token, host=args.host, api_client=api_client)
 
     # if running in "normal" mode...
     if (
@@ -1753,7 +1749,28 @@ def main() -> None:
         action="store_true",
         help=(
             "Like --no-token, but also dumps each parsed submission to stdout as a "
-            "line of JSON instead of silently discarding it."
+            "line of JSON instead of silently discarding it. Can be combined with "
+            "--file-dump and/or --sqlite-dump."
+        ),
+    )
+    parser.add_argument(
+        "--file-dump",
+        metavar="FILENAME",
+        default=None,
+        help=(
+            "Like --no-token, but also appends each parsed submission to this file as "
+            "a line of JSON instead of silently discarding it. Can be combined with "
+            "--stdout-dump and/or --sqlite-dump."
+        ),
+    )
+    parser.add_argument(
+        "--sqlite-dump",
+        metavar="DBFILE",
+        default=None,
+        help=(
+            "Like --no-token, but also inserts each parsed submission into a SQLite "
+            "database at this path (created if it doesn't exist) instead of silently "
+            "discarding it. Can be combined with --stdout-dump and/or --file-dump."
         ),
     )
     parser.add_argument(
@@ -1764,23 +1781,29 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.stdout_dump:
+    dump_requested = bool(args.stdout_dump or args.file_dump or args.sqlite_dump)
+    if dump_requested:
         args.no_token = True
 
     if args.no_token:
-        if args.stdout_dump:
+        api_client: seventeenlands.api_client.ApiClient
+        if dump_requested:
             logger.info(
-                "Running with --stdout-dump: parsing logs locally and dumping submissions to stdout."
+                "Running with dump flag(s): parsing logs locally and dumping submissions "
+                f"(stdout={bool(args.stdout_dump)}, file={args.file_dump}, sqlite={args.sqlite_dump})."
             )
-            api_client_cls: type[seventeenlands.api_client.ApiClient] = (
-                seventeenlands.api_client.STDOUTApiClient
+            api_client = seventeenlands.api_client.DumpApiClient(
+                host=args.host,
+                dump_stdout=args.stdout_dump,
+                dump_file=args.file_dump,
+                dump_sqlite=args.sqlite_dump,
             )
         else:
             logger.info(
                 "Running with --no-token: parsing logs locally, nothing will be uploaded."
             )
-            api_client_cls = seventeenlands.api_client.NoOpApiClient
-        processing_loop(args, token="", api_client_cls=api_client_cls)
+            api_client = seventeenlands.api_client.NoOpApiClient(host=args.host)
+        processing_loop(args, token="", api_client=api_client)
         return
 
     # --no-token was not set, so it's safe to use the real API client and

@@ -1,6 +1,7 @@
 import datetime
 import gzip
 import json
+import sqlite3
 from typing import Any, Optional
 
 import requests
@@ -197,15 +198,51 @@ class NoOpApiClient(ApiClient):
         return None
 
 
-class STDOUTApiClient(ApiClient):
+class DumpApiClient(ApiClient):
     """
-    Drop-in replacement for ApiClient that never touches the network. Every
-    submission is written to stdout as a single line of JSON instead of being
-    sent anywhere, so the parsed data can be piped to another process/file.
+    Drop-in replacement for ApiClient that never touches the network. Each
+    submission is written to stdout, appended to a local file as a line of
+    JSON, and/or inserted into a local SQLite database, instead of being sent
+    anywhere. Any combination of the three destinations may be enabled at once.
     """
+
+    def __init__(
+        self,
+        host: str,
+        dump_stdout: bool = False,
+        dump_file: Optional[str] = None,
+        dump_sqlite: Optional[str] = None,
+    ) -> None:
+        super().__init__(host=host)
+        self.dump_stdout = dump_stdout
+        self._dump_file_handle = open(dump_file, "a") if dump_file else None
+
+        self._sqlite_conn = None
+        if dump_sqlite:
+            self._sqlite_conn = sqlite3.connect(dump_sqlite)
+            self._sqlite_conn.execute(
+                "CREATE TABLE IF NOT EXISTS submissions ("
+                "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "endpoint TEXT NOT NULL, "
+                "blob TEXT NOT NULL, "
+                "created_at TEXT NOT NULL DEFAULT (datetime('now'))"
+                ")"
+            )
+            self._sqlite_conn.commit()
 
     def _retry_post(
         self, endpoint: str, blob: Any, use_gzip: bool = False
     ) -> Optional[requests.Response]:  # type: ignore[override]
-        print(json.dumps({"endpoint": endpoint, "blob": blob}))
+        line = json.dumps({"endpoint": endpoint, "blob": blob})
+        if self.dump_stdout:
+            print(line)
+        if self._dump_file_handle is not None:
+            self._dump_file_handle.write(line + "\n")
+            self._dump_file_handle.flush()
+        if self._sqlite_conn is not None:
+            self._sqlite_conn.execute(
+                "INSERT INTO submissions (endpoint, blob) VALUES (?, ?)",
+                (endpoint, json.dumps(blob)),
+            )
+            self._sqlite_conn.commit()
         return None
