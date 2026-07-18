@@ -1675,8 +1675,8 @@ def verify_version(host: str, prompt_if_update_required: bool) -> bool:
 
 def processing_loop(args: argparse.Namespace, token: str, upload: bool = True) -> None:
     filepaths = POSSIBLE_CURRENT_FILEPATHS
-    if args.log_file is not None:
-        filepaths = [args.log_file]
+    if args.local_log_files is not None:
+        filepaths = args.local_log_files
 
     follow = not args.once
 
@@ -1684,7 +1684,7 @@ def processing_loop(args: argparse.Namespace, token: str, upload: bool = True) -
 
     # if running in "normal" mode...
     if (
-        args.log_file is None
+        args.local_log_files is None
         and args.host == seventeenlands.api_client.DEFAULT_HOST
         and follow
     ):
@@ -1716,8 +1716,9 @@ def main() -> None:
 
     parser.add_argument(
         "-l",
-        "--log_file",
-        help=f"Log filename to process. If not specified, will try one of {POSSIBLE_CURRENT_FILEPATHS}",
+        "--local-log-files",
+        nargs="+",
+        help=f"One or more log filenames to process. If not specified, will try one of {POSSIBLE_CURRENT_FILEPATHS}",
     )
     parser.add_argument(
         "--host",
