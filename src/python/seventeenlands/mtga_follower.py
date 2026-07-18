@@ -241,14 +241,18 @@ def contains_log_key(key: str, full_log: str) -> bool:
 class Follower:
     """Follows along a log, parses the messages, and passes along the parsed data to the API endpoint."""
 
-    def __init__(self, token: str, host: str, upload: bool = True) -> None:
+    def __init__(
+        self,
+        token: str,
+        host: str,
+        api_client_cls: type[
+            seventeenlands.api_client.ApiClient
+        ] = seventeenlands.api_client.ApiClient,
+    ) -> None:
         self.host = host
         self.token = token
         self.json_decoder = json.JSONDecoder()
-        if upload:
-            self._api_client = seventeenlands.api_client.ApiClient(host=host)
-        else:
-            self._api_client = seventeenlands.api_client.NoOpApiClient(host=host)
+        self._api_client = api_client_cls(host=host)
         self._reinitialize()
 
     def _reinitialize(self) -> None:
@@ -1673,14 +1677,20 @@ def verify_version(host: str, prompt_if_update_required: bool) -> bool:
     return False
 
 
-def processing_loop(args: argparse.Namespace, token: str, upload: bool = True) -> None:
+def processing_loop(
+    args: argparse.Namespace,
+    token: str,
+    api_client_cls: type[
+        seventeenlands.api_client.ApiClient
+    ] = seventeenlands.api_client.ApiClient,
+) -> None:
     filepaths = POSSIBLE_CURRENT_FILEPATHS
     if args.local_log_files is not None:
         filepaths = args.local_log_files
 
     follow = not args.once
 
-    follower = Follower(token, host=args.host, upload=upload)
+    follower = Follower(token, host=args.host, api_client_cls=api_client_cls)
 
     # if running in "normal" mode...
     if (
@@ -1739,6 +1749,14 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--stdout-dump",
+        action="store_true",
+        help=(
+            "Like --no-token, but also dumps each parsed submission to stdout as a "
+            "line of JSON instead of silently discarding it."
+        ),
+    )
+    parser.add_argument(
         "--once",
         action="store_true",
         help="Whether to stop after parsing the file once (default is to continue waiting for updates to the file)",
@@ -1746,11 +1764,27 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if args.stdout_dump:
+        args.no_token = True
+
     if args.no_token:
-        logger.info("Running with --no-token: parsing logs locally, nothing will be uploaded.")
-        processing_loop(args, token="", upload=False)
+        if args.stdout_dump:
+            logger.info(
+                "Running with --stdout-dump: parsing logs locally and dumping submissions to stdout."
+            )
+            api_client_cls: type[seventeenlands.api_client.ApiClient] = (
+                seventeenlands.api_client.STDOUTApiClient
+            )
+        else:
+            logger.info(
+                "Running with --no-token: parsing logs locally, nothing will be uploaded."
+            )
+            api_client_cls = seventeenlands.api_client.NoOpApiClient
+        processing_loop(args, token="", api_client_cls=api_client_cls)
         return
 
+    # --no-token was not set, so it's safe to use the real API client and
+    # actually upload data.
     token = args.token or get_config()
 
     check_count = 0

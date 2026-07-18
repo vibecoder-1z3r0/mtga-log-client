@@ -195,3 +195,17 @@ class NoOpApiClient(ApiClient):
     ) -> Optional[requests.Response]:  # type: ignore[override]
         logger.info(f"[no-upload] Skipping POST to {endpoint}: {blob}")
         return None
+
+
+class STDOUTApiClient(ApiClient):
+    """
+    Drop-in replacement for ApiClient that never touches the network. Every
+    submission is written to stdout as a single line of JSON instead of being
+    sent anywhere, so the parsed data can be piped to another process/file.
+    """
+
+    def _retry_post(
+        self, endpoint: str, blob: Any, use_gzip: bool = False
+    ) -> Optional[requests.Response]:  # type: ignore[override]
+        print(json.dumps({"endpoint": endpoint, "blob": blob}))
+        return None
