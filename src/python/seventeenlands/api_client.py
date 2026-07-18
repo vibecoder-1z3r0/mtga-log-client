@@ -191,9 +191,9 @@ class NoOpApiClient(ApiClient):
     submission is only logged locally, so no log data leaves the machine.
     """
 
-    def _retry_post(
+    def _retry_post(  # type: ignore[override]
         self, endpoint: str, blob: Any, use_gzip: bool = False
-    ) -> Optional[requests.Response]:  # type: ignore[override]
+    ) -> Optional[requests.Response]:
         logger.info(f"[no-upload] Skipping POST to {endpoint}: {blob}")
         return None
 
@@ -230,9 +230,9 @@ class DumpApiClient(ApiClient):
             )
             self._sqlite_conn.commit()
 
-    def _retry_post(
+    def _retry_post(  # type: ignore[override]
         self, endpoint: str, blob: Any, use_gzip: bool = False
-    ) -> Optional[requests.Response]:  # type: ignore[override]
+    ) -> Optional[requests.Response]:
         line = json.dumps({"endpoint": endpoint, "blob": blob})
         if self.dump_stdout:
             print(line)

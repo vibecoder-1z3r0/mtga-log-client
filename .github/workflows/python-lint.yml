@@ -43,3 +43,30 @@ jobs:
       run: |
         cd src/python
         uv run mypy
+
+  pytest:
+    name: Pytest
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.9', '3.12']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: |
+        cd src/python
+        uv sync --dev
+
+    - name: Run pytest
+      run: |
+        cd src/python
+        uv run pytest
