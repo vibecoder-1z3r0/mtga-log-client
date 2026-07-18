@@ -241,11 +241,14 @@ def contains_log_key(key: str, full_log: str) -> bool:
 class Follower:
     """Follows along a log, parses the messages, and passes along the parsed data to the API endpoint."""
 
-    def __init__(self, token: str, host: str) -> None:
+    def __init__(self, token: str, host: str, upload: bool = True) -> None:
         self.host = host
         self.token = token
         self.json_decoder = json.JSONDecoder()
-        self._api_client = seventeenlands.api_client.ApiClient(host=host)
+        if upload:
+            self._api_client = seventeenlands.api_client.ApiClient(host=host)
+        else:
+            self._api_client = seventeenlands.api_client.NoOpApiClient(host=host)
         self._reinitialize()
 
     def _reinitialize(self) -> None:
@@ -1670,14 +1673,14 @@ def verify_version(host: str, prompt_if_update_required: bool) -> bool:
     return False
 
 
-def processing_loop(args: argparse.Namespace, token: str) -> None:
+def processing_loop(args: argparse.Namespace, token: str, upload: bool = True) -> None:
     filepaths = POSSIBLE_CURRENT_FILEPATHS
     if args.log_file is not None:
         filepaths = [args.log_file]
 
     follow = not args.once
 
-    follower = Follower(token, host=args.host)
+    follower = Follower(token, host=args.host, upload=upload)
 
     # if running in "normal" mode...
     if (
@@ -1711,8 +1714,6 @@ def processing_loop(args: argparse.Namespace, token: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="MTGA log follower")
 
-    config_token = get_config()
-
     parser.add_argument(
         "-l",
         "--log_file",
@@ -1725,8 +1726,16 @@ def main() -> None:
     )
     parser.add_argument(
         "--token",
-        default=config_token,
+        default=None,
         help=f"Token of the user. If not specified, will use the token at {CONFIG_FILE}",
+    )
+    parser.add_argument(
+        "--no-token",
+        action="store_true",
+        help=(
+            "Run without a 17Lands token. Skips the token prompt, the update check, "
+            "and all network requests -- logs are only parsed locally and nothing is uploaded."
+        ),
     )
     parser.add_argument(
         "--once",
@@ -1736,6 +1745,13 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    if args.no_token:
+        logger.info("Running with --no-token: parsing logs locally, nothing will be uploaded.")
+        processing_loop(args, token="", upload=False)
+        return
+
+    token = args.token or get_config()
+
     check_count = 0
     while not verify_version(
         host=args.host,
@@ -1744,7 +1760,6 @@ def main() -> None:
         check_count += 1
         time.sleep(UPDATE_CHECK_INTERVAL.total_seconds())
 
-    token = args.token
     logger.info(f"Using token {token[:4]}...{token[-4:]}")
 
     processing_loop(args, token)

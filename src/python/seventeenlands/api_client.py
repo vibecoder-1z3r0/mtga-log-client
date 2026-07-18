@@ -182,3 +182,16 @@ class ApiClient:
             blob=blob,
             use_gzip=True,
         )
+
+
+class NoOpApiClient(ApiClient):
+    """
+    Drop-in replacement for ApiClient that never touches the network. Every
+    submission is only logged locally, so no log data leaves the machine.
+    """
+
+    def _retry_post(
+        self, endpoint: str, blob: Any, use_gzip: bool = False
+    ) -> Optional[requests.Response]:  # type: ignore[override]
+        logger.info(f"[no-upload] Skipping POST to {endpoint}: {blob}")
+        return None
